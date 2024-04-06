@@ -202,21 +202,21 @@ public:
    * @param body_name[in] Body name
    * @param psi[in]        Inertial parameters
    */
-  void update_body_inertial_parameters(
-      const std::string &body_name,
-      const Eigen::Ref<const Vector10d> &psi) {
+  void update_body_inertial_parameters(const std::string &body_name,
+                                       const Eigen::Ref<const Vector10d> &psi) {
     updateBodyInertialParameters(model_, body_name, psi);
   }
 
   /**
-   * @brief Return the Pinocchio model's inertial parameters of a given body frame
+   * @brief Return the Pinocchio model's inertial parameters of a given body
+   * frame
    *
    * The inertial parameters vector is defined as [m, h_x, h_y, h_z,
    * I_{xx}, I_{xy}, I_{yy}, I_{xz}, I_{yz}, I_{zz}]^T, where h=mc is
    * the first moment of inertial (mass * barycenter) and the rotational
    * inertia I = I_C + mS^T(c)S(c) where I_C has its origin at the
    * barycenter.
-   * 
+   *
    * @param body_name[in]  Body name
    */
   const Vector10d

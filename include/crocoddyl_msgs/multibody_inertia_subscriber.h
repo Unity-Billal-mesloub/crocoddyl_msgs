@@ -21,9 +21,11 @@
 namespace crocoddyl_msgs {
 
 #ifdef ROS2
-typedef const crocoddyl_msgs::msg::MultibodyInertia::SharedPtr MultibodyInertiaSharedPtr;
+typedef const crocoddyl_msgs::msg::MultibodyInertia::SharedPtr
+    MultibodyInertiaSharedPtr;
 #else
-typedef const crocoddyl_msgs::MultibodyInertia::ConstPtr &MultibodyInertiaSharedPtr;
+typedef const crocoddyl_msgs::MultibodyInertia::ConstPtr
+    &MultibodyInertiaSharedPtr;
 #endif
 
 class MultibodyInertiaRosSubscriber {
@@ -48,8 +50,7 @@ public:
     thread_ = std::thread([this]() { this->spin(); });
     thread_.detach();
     RCLCPP_INFO_STREAM(node_->get_logger(),
-                       "Subscribing MultibodyInertia messages on "
-                           << topic);
+                       "Subscribing MultibodyInertia messages on " << topic);
 #else
       : spinner_(2), has_new_msg_(false), is_processing_msg_(false),
         last_msg_time_(0.) {
@@ -58,8 +59,7 @@ public:
         topic, 1, &MultibodyInertiaRosSubscriber::callback, this,
         ros::TransportHints().tcpNoDelay());
     spinner_.start();
-    ROS_INFO_STREAM("Subscribing MultibodyInertia messages on "
-                    << topic);
+    ROS_INFO_STREAM("Subscribing MultibodyInertia messages on " << topic);
 #endif
   }
 
@@ -73,7 +73,7 @@ public:
    * the first moment of inertial (mass * barycenter) and the rotational
    * inertia I = I_C + mS^T(c)S(c) where I_C has its origin at the
    * barycenter.
-   * 
+   *
    * @return  A map from body names to inertial parameters.   *
    */
   std::map<std::string, Vector10d> get_parameters() {
@@ -104,14 +104,13 @@ private:
   rclcpp::executors::SingleThreadedExecutor spinner_;
   std::thread thread_;
   void spin() { spinner_.spin(); }
-  rclcpp::Subscription<MultibodyInertia>::SharedPtr
-      sub_; //!< ROS subscriber
+  rclcpp::Subscription<MultibodyInertia>::SharedPtr sub_; //!< ROS subscriber
 #else
   ros::NodeHandle node_;
   ros::AsyncSpinner spinner_;
   ros::Subscriber sub_; //!< ROS subscriber
 #endif
-  std::mutex mutex_; ///< Mutex to prevent race condition on callback
+  std::mutex mutex_;     ///< Mutex to prevent race condition on callback
   MultibodyInertia msg_; //!< ROS message
 
   bool has_new_msg_;       //!< Indcate when a new message has been received

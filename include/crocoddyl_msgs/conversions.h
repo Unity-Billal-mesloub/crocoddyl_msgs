@@ -35,6 +35,7 @@
 #include "crocoddyl_msgs/msg/multibody_inertia.hpp"
 #include "crocoddyl_msgs/msg/state.hpp"
 #include "crocoddyl_msgs/msg/time_interval.hpp"
+#include <rclcpp/rclcpp.hpp>
 #include <whole_body_state_msgs/msg/whole_body_state.hpp>
 #include <whole_body_state_msgs/msg/whole_body_trajectory.hpp>
 #else
@@ -107,7 +108,9 @@ template <int Options, template <typename, int> class JointCollectionTpl>
 static inline std::size_t getRootNq(
     const pinocchio::ModelTpl<double, Options, JointCollectionTpl> &model) {
   const std::size_t root_joint_id = getRootJointId(model);
-  return model.frames[root_joint_id].name != "universe" ? model.joints[root_joint_id].nq() : 0;
+  return model.frames[root_joint_id].name != "universe"
+             ? model.joints[root_joint_id].nq()
+             : 0;
 }
 
 /**
@@ -119,7 +122,9 @@ template <int Options, template <typename, int> class JointCollectionTpl>
 static inline std::size_t getRootNv(
     const pinocchio::ModelTpl<double, Options, JointCollectionTpl> &model) {
   const std::size_t root_joint_id = getRootJointId(model);
-  return model.frames[root_joint_id].name != "universe" ? model.joints[root_joint_id].nv() : 0;
+  return model.frames[root_joint_id].name != "universe"
+             ? model.joints[root_joint_id].nv()
+             : 0;
 }
 
 /**
@@ -139,48 +144,58 @@ static inline std::size_t getRootNv(
 template <int Options, template <typename, int> class JointCollectionTpl>
 void updateBodyInertialParameters(
     pinocchio::ModelTpl<double, Options, JointCollectionTpl> &model,
-    const std::string &frame_name,
-    const Eigen::Ref<const Vector10d> &psi) {
+    const std::string &frame_name, const Eigen::Ref<const Vector10d> &psi) {
   if (model.existFrame(frame_name)) {
     const std::size_t frame_id = model.getFrameId(frame_name);
     switch (model.frames[frame_id].type) {
-      case pinocchio::FrameType::JOINT: {
+    case pinocchio::FrameType::JOINT: {
       const std::size_t joint_id = model.getJointId(frame_name);
       model.inertias[joint_id] = pinocchio::Inertia::FromDynamicParameters(psi);
-      } break;
-      case pinocchio::FrameType::BODY: {
-//TODO: Update Pinocchio version after releasing https://github.com/stack-of-tasks/pinocchio/pull/2204
-#if (PINOCCHIO_MAJOR_VERSION >= 2 && PINOCCHIO_MINOR_VERSION >= 7 && PINOCCHIO_PATCH_VERSION >= 1)
+    } break;
+    case pinocchio::FrameType::BODY: {
+// TODO: Update Pinocchio version after releasing
+// https://github.com/stack-of-tasks/pinocchio/pull/2204
+#if (PINOCCHIO_MAJOR_VERSION >= 2 && PINOCCHIO_MINOR_VERSION >= 7 &&           \
+     PINOCCHIO_PATCH_VERSION >= 1)
       const std::size_t fixed_joint_id = model.frames[frame_id].previousFrame;
       const std::size_t joint_id = model.frames[fixed_joint_id].parent;
-      const pinocchio::SE3& jMb = model.frames[fixed_joint_id].placement;
-      const pinocchio::Inertia& I_updated = pinocchio::Inertia::FromDynamicParameters(psi);
-      const pinocchio::Inertia& dI = I_updated - model.frames[fixed_joint_id].inertia;
+      const pinocchio::SE3 &jMb = model.frames[fixed_joint_id].placement;
+      const pinocchio::Inertia &I_updated =
+          pinocchio::Inertia::FromDynamicParameters(psi);
+      const pinocchio::Inertia &dI =
+          I_updated - model.frames[fixed_joint_id].inertia;
       model.frames[fixed_joint_id].inertia = I_updated;
       model.inertias[joint_id] += jMb.act(dI);
 #else
-      std::invalid_argument("The installed Pinocchio version doesn't support minus operators in inertia needed for " + frame_name);
+      std::invalid_argument("The installed Pinocchio version doesn't support "
+                            "minus operators in inertia needed for " +
+                            frame_name);
 #endif
-      } break;
-      case pinocchio::FrameType::FIXED_JOINT: {
-#if (PINOCCHIO_MAJOR_VERSION >= 2 && PINOCCHIO_MINOR_VERSION >= 7 && PINOCCHIO_PATCH_VERSION >= 1)
+    } break;
+    case pinocchio::FrameType::FIXED_JOINT: {
+#if (PINOCCHIO_MAJOR_VERSION >= 2 && PINOCCHIO_MINOR_VERSION >= 7 &&           \
+     PINOCCHIO_PATCH_VERSION >= 1)
       const std::size_t joint_id = model.frames[frame_id].parent;
-      const pinocchio::SE3& jMb = model.frames[frame_id].placement;
-      const pinocchio::Inertia& I_updated = pinocchio::Inertia::FromDynamicParameters(psi);
-      const pinocchio::Inertia& dI = I_updated - model.frames[frame_id].inertia;
+      const pinocchio::SE3 &jMb = model.frames[frame_id].placement;
+      const pinocchio::Inertia &I_updated =
+          pinocchio::Inertia::FromDynamicParameters(psi);
+      const pinocchio::Inertia &dI = I_updated - model.frames[frame_id].inertia;
       model.frames[frame_id].inertia = I_updated;
       model.inertias[joint_id] += jMb.act(dI);
 #else
-      std::invalid_argument("The installed Pinocchio version doesn't support minus operators in inertia needed for " + frame_name);
+      std::invalid_argument("The installed Pinocchio version doesn't support "
+                            "minus operators in inertia needed for " +
+                            frame_name);
 #endif
-      } break;
-      default: {
-        std::invalid_argument("The type of frame " + frame_name + " is not supported");
-        break;
-      }
+    } break;
+    default: {
+      std::invalid_argument("The type of frame " + frame_name +
+                            " is not supported");
+      break;
+    }
     }
   } else {
-    std::invalid_argument("Doesn't exist " + frame_name + " frame");     
+    std::invalid_argument("Doesn't exist " + frame_name + " frame");
   }
 }
 
@@ -193,37 +208,39 @@ void updateBodyInertialParameters(
  * inertia I = I_C + mS^T(c)S(c) where I_C has its origin at the
  * barycenter. Additionally, the type of frame supported are joints,
  * fixed joints, and bodies
- * 
+ *
  * @param model[in]      Pinocchio model
  * @param frame_name[in] Frame name
  * @return inertial parameters.
  */
 template <int Options, template <typename, int> class JointCollectionTpl>
-const Vector10d
-getBodyInertialParameters(
+const Vector10d getBodyInertialParameters(
     const pinocchio::ModelTpl<double, Options, JointCollectionTpl> &model,
     const std::string &frame_name) {
   if (model.existFrame(frame_name)) {
     const std::size_t frame_id = model.getFrameId(frame_name);
     switch (model.frames[frame_id].type) {
-      case pinocchio::FrameType::JOINT: {
+    case pinocchio::FrameType::JOINT: {
       const std::size_t joint_id = model.getJointId(frame_name);
       return model.inertias[joint_id].toDynamicParameters();
-      } break;
-      case pinocchio::FrameType::BODY: {
+    } break;
+    case pinocchio::FrameType::BODY: {
       const std::size_t fixed_joint_id = model.frames[frame_id].previousFrame;
       return model.frames[fixed_joint_id].inertia.toDynamicParameters();
-      } break;
-      case pinocchio::FrameType::FIXED_JOINT: {
+    } break;
+    case pinocchio::FrameType::FIXED_JOINT: {
       return model.frames[frame_id].inertia.toDynamicParameters();
-      } break;
-      default: {
-        std::invalid_argument("The type of frame " + frame_name + " is not supported");
-        break;
-      }
+    } break;
+    default: {
+      std::invalid_argument("The type of frame " + frame_name +
+                            " is not supported");
+      return NAN * Vector10d::Ones();
+      break;
+    }
     }
   } else {
-    std::invalid_argument("Doesn't exist " + frame_name + " frame");     
+    std::invalid_argument("Doesn't exist " + frame_name + " frame");
+    return NAN * Vector10d::Ones();
   }
 }
 
@@ -656,7 +673,7 @@ static inline void fromMsg(const Control &msg, Eigen::Ref<Eigen::VectorXd> u,
 }
 
 /**
- * @brief Conversion of inertial parameters from a 
+ * @brief Conversion of inertial parameters from a
  * crocoddyl_msgs::BodyInertia message to Eigen
  *
  * @param[in] msg   ROS message that contains the inertial parameters
@@ -880,9 +897,9 @@ static inline void fromReduced(
                                 " but received " + std::to_string(v_in.size()));
   }
   if (static_cast<std::size_t>(tau_out.size()) != model.nv - nv_root) {
-    throw std::invalid_argument(
-        "Expected tau_out to be " + std::to_string(njoints) +
-        " but received " + std::to_string(tau_out.size()));
+    throw std::invalid_argument("Expected tau_out to be " +
+                                std::to_string(njoints) + " but received " +
+                                std::to_string(tau_out.size()));
   }
   if (static_cast<std::size_t>(tau_in.size()) != njoints_reduced) {
     throw std::invalid_argument(
@@ -979,9 +996,9 @@ static inline void fromReduced(
                                 " but received " + std::to_string(a_in.size()));
   }
   if (static_cast<std::size_t>(tau_out.size()) != njoints) {
-    throw std::invalid_argument(
-        "Expected tau_out to be " + std::to_string(njoints) +
-        " but received " + std::to_string(tau_out.size()));
+    throw std::invalid_argument("Expected tau_out to be " +
+                                std::to_string(njoints) + " but received " +
+                                std::to_string(tau_out.size()));
   }
   if (static_cast<std::size_t>(tau_in.size()) != njoints_reduced) {
     throw std::invalid_argument(
@@ -1069,9 +1086,9 @@ toReduced(const pinocchio::ModelTpl<double, Options, JointCollectionTpl> &model,
         " but received " + std::to_string(tau_out.size()));
   }
   if (static_cast<std::size_t>(tau_in.size()) != njoints) {
-    throw std::invalid_argument(
-        "Expected tau_in to be " + std::to_string(njoints) +
-        " but received " + std::to_string(tau_in.size()));
+    throw std::invalid_argument("Expected tau_in to be " +
+                                std::to_string(njoints) + " but received " +
+                                std::to_string(tau_in.size()));
   }
 
   typedef pinocchio::ModelTpl<double, Options, JointCollectionTpl> Model;
@@ -1160,9 +1177,9 @@ toReduced(const pinocchio::ModelTpl<double, Options, JointCollectionTpl> &model,
         " but received " + std::to_string(tau_out.size()));
   }
   if (static_cast<std::size_t>(tau_in.size()) != njoints) {
-    throw std::invalid_argument(
-        "Expected tau_in to be " + std::to_string(njoints) +
-        " but received " + std::to_string(tau_in.size()));
+    throw std::invalid_argument("Expected tau_in to be " +
+                                std::to_string(njoints) + " but received " +
+                                std::to_string(tau_in.size()));
   }
 
   typedef pinocchio::ModelTpl<double, Options, JointCollectionTpl> Model;

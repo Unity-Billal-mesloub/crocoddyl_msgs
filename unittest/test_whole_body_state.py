@@ -28,8 +28,8 @@ from crocoddyl_ros import (
     ContactType,
     WholeBodyStateRosPublisher,
     WholeBodyStateRosSubscriber,
-    toReduced,
     getRootNv,
+    toReduced,
     updateBodyInertialParameters,
 )
 
@@ -86,7 +86,9 @@ class TestWholeBodyStateAbstract(unittest.TestCase):
         }
 
     def test_publisher_without_contact(self):
-        sub = WholeBodyStateRosSubscriber(self.MODEL, "whole_body_state_without_contact")
+        sub = WholeBodyStateRosSubscriber(
+            self.MODEL, "whole_body_state_without_contact"
+        )
         pub = WholeBodyStateRosPublisher(self.MODEL, "whole_body_state_without_contact")
         time.sleep(1)
         # publish whole-body state messages
@@ -103,7 +105,10 @@ class TestWholeBodyStateAbstract(unittest.TestCase):
         qdiff = pinocchio.difference(self.MODEL, q, _q)
         mask = ~np.isnan(qdiff)
         self.assertEqual(self.t, _t, "Wrong time interval")
-        self.assertTrue(np.allclose(qdiff[mask], np.zeros(self.MODEL.nv)[mask], atol=1e-9), "Wrong q")
+        self.assertTrue(
+            np.allclose(qdiff[mask], np.zeros(self.MODEL.nv)[mask], atol=1e-9),
+            "Wrong q",
+        )
         self.assertTrue(np.allclose(v, _v, atol=1e-9), "Wrong v")
         self.assertTrue(np.allclose(tau, _tau, atol=1e-9), "Wrong tau")
 
@@ -125,7 +130,10 @@ class TestWholeBodyStateAbstract(unittest.TestCase):
         qdiff = pinocchio.difference(self.MODEL, q, _q)
         mask = ~np.isnan(qdiff)
         self.assertEqual(self.t, _t, "Wrong time interval")
-        self.assertTrue(np.allclose(qdiff[mask], np.zeros(self.MODEL.nv)[mask], atol=1e-9), "Wrong q")
+        self.assertTrue(
+            np.allclose(qdiff[mask], np.zeros(self.MODEL.nv)[mask], atol=1e-9),
+            "Wrong q",
+        )
         self.assertTrue(np.allclose(v, _v, atol=1e-9), "Wrong v")
         self.assertTrue(np.allclose(tau, _tau, atol=1e-9), "Wrong tau")
         for name in self.p:
@@ -161,12 +169,16 @@ class TestWholeBodyStateAbstract(unittest.TestCase):
     def test_communication_with_reduced_model(self):
         qref = pinocchio.randomConfiguration(self.MODEL)
         reduced_model = pinocchio.buildReducedModel(
-            self.MODEL, [self.MODEL.getJointId(name) for name in self.LOCKED_JOINTS], qref
+            self.MODEL,
+            [self.MODEL.getJointId(name) for name in self.LOCKED_JOINTS],
+            qref,
         )
         sub = WholeBodyStateRosSubscriber(
             self.MODEL, self.LOCKED_JOINTS, qref, "reduced_whole_body_state"
         )
-        pub = WholeBodyStateRosPublisher(self.MODEL, self.LOCKED_JOINTS, qref, "reduced_whole_body_state")
+        pub = WholeBodyStateRosPublisher(
+            self.MODEL, self.LOCKED_JOINTS, qref, "reduced_whole_body_state"
+        )
         time.sleep(1)
         # publish whole-body state messages
         nv_root = getRootNv(self.MODEL)
@@ -183,7 +195,10 @@ class TestWholeBodyStateAbstract(unittest.TestCase):
         qdiff = pinocchio.difference(reduced_model, q, _q)
         mask = ~np.isnan(qdiff)
         self.assertEqual(self.t, _t, "Wrong time interval")
-        self.assertTrue(np.allclose(qdiff[mask], np.zeros(reduced_model.nv)[mask], atol=1e-9), "Wrong q")
+        self.assertTrue(
+            np.allclose(qdiff[mask], np.zeros(reduced_model.nv)[mask], atol=1e-9),
+            "Wrong q",
+        )
         self.assertTrue(np.allclose(v, _v, atol=1e-9), "Wrong v")
         self.assertTrue(np.allclose(tau, _tau, atol=1e-9), "Wrong tau")
         for name in self.p:
@@ -225,7 +240,9 @@ class TestWholeBodyStateAbstract(unittest.TestCase):
         sub = WholeBodyStateRosSubscriber(
             self.MODEL, locked_joints, qref, "non_locked_whole_body_state"
         )
-        pub = WholeBodyStateRosPublisher(self.MODEL, locked_joints, qref, "non_locked_whole_body_state")
+        pub = WholeBodyStateRosPublisher(
+            self.MODEL, locked_joints, qref, "non_locked_whole_body_state"
+        )
         time.sleep(1)
         # publish whole-body state messages
         nv_root = getRootNv(self.MODEL)
@@ -242,7 +259,10 @@ class TestWholeBodyStateAbstract(unittest.TestCase):
         qdiff = pinocchio.difference(reduced_model, q, _q)
         mask = ~np.isnan(qdiff)
         self.assertEqual(self.t, _t, "Wrong time interval")
-        self.assertTrue(np.allclose(qdiff[mask], np.zeros(reduced_model.nv)[mask], atol=1e-9), "Wrong q")
+        self.assertTrue(
+            np.allclose(qdiff[mask], np.zeros(reduced_model.nv)[mask], atol=1e-9),
+            "Wrong q",
+        )
         self.assertTrue(np.allclose(v, _v, atol=1e-9), "Wrong v")
         self.assertTrue(np.allclose(tau, _tau, atol=1e-9), "Wrong tau")
         for name in self.p:
@@ -281,9 +301,20 @@ class TestWholeBodyStateAbstract(unittest.TestCase):
         time.sleep(1)
         # update inertia parameters
         if pinocchio.__version__ >= "2.7.1":
-            frame_names = [f.name for f in self.MODEL.frames if f.name != "universe" and (f.type == pinocchio.BODY or f.type == pinocchio.JOINT or f.type == pinocchio.FIXED_JOINT)]
+            frame_names = [
+                f.name
+                for f in self.MODEL.frames
+                if f.name != "universe"
+                and (
+                    f.type == pinocchio.BODY
+                    or f.type == pinocchio.JOINT
+                    or f.type == pinocchio.FIXED_JOINT
+                )
+            ]
         else:
-            frame_names = [f.name for f in self.MODEL.frames if f.type == pinocchio.JOINT]
+            frame_names = [
+                f.name for f in self.MODEL.frames if f.type == pinocchio.JOINT
+            ]
         new_parameters = []
         for name in frame_names:
             psi = pinocchio.Inertia.Random().toDynamicParameters()
@@ -336,7 +367,10 @@ class TestWholeBodyStateAbstract(unittest.TestCase):
         qdiff = pinocchio.difference(self.MODEL, q, _q)
         mask = ~np.isnan(qdiff)
         self.assertEqual(self.t, _t, "Wrong time interval")
-        self.assertTrue(np.allclose(qdiff[mask], np.zeros(self.MODEL.nv)[mask], atol=1e-9), "Wrong q")
+        self.assertTrue(
+            np.allclose(qdiff[mask], np.zeros(self.MODEL.nv)[mask], atol=1e-9),
+            "Wrong q",
+        )
         self.assertTrue(np.allclose(v, _v, atol=1e-9), "Wrong v")
         self.assertTrue(np.allclose(tau, _tau, atol=1e-9), "Wrong tau")
         for name in self.p:
@@ -372,16 +406,33 @@ class TestWholeBodyStateAbstract(unittest.TestCase):
     def test_update_reduced_model(self):
         qref = pinocchio.randomConfiguration(self.MODEL)
         reduced_model = pinocchio.buildReducedModel(
-            self.MODEL, [self.MODEL.getJointId(name) for name in self.LOCKED_JOINTS], qref
+            self.MODEL,
+            [self.MODEL.getJointId(name) for name in self.LOCKED_JOINTS],
+            qref,
         )
-        pub = WholeBodyStateRosPublisher(reduced_model, "whole_body_state_update_reduced_model")
-        sub = WholeBodyStateRosSubscriber(reduced_model, "whole_body_state_update_reduced_model")
+        pub = WholeBodyStateRosPublisher(
+            reduced_model, "whole_body_state_update_reduced_model"
+        )
+        sub = WholeBodyStateRosSubscriber(
+            reduced_model, "whole_body_state_update_reduced_model"
+        )
         time.sleep(1)
         # update inertia parameters
         if pinocchio.__version__ >= "2.7.1":
-            frame_names = [f.name for f in reduced_model.frames if f.name != "universe" and (f.type == pinocchio.BODY or f.type == pinocchio.JOINT or f.type == pinocchio.FIXED_JOINT)]
+            frame_names = [
+                f.name
+                for f in reduced_model.frames
+                if f.name != "universe"
+                and (
+                    f.type == pinocchio.BODY
+                    or f.type == pinocchio.JOINT
+                    or f.type == pinocchio.FIXED_JOINT
+                )
+            ]
         else:
-            frame_names = [f.name for f in reduced_model.frames if f.type == pinocchio.JOINT]
+            frame_names = [
+                f.name for f in reduced_model.frames if f.type == pinocchio.JOINT
+            ]
         new_parameters = []
         for name in frame_names:
             psi = pinocchio.Inertia.Random().toDynamicParameters()
@@ -435,7 +486,10 @@ class TestWholeBodyStateAbstract(unittest.TestCase):
         qdiff = pinocchio.difference(reduced_model, q, _q)
         mask = ~np.isnan(qdiff)
         self.assertEqual(self.t, _t, "Wrong time interval")
-        self.assertTrue(np.allclose(qdiff[mask], np.zeros(reduced_model.nv)[mask], atol=1e-9), "Wrong q")
+        self.assertTrue(
+            np.allclose(qdiff[mask], np.zeros(reduced_model.nv)[mask], atol=1e-9),
+            "Wrong q",
+        )
         self.assertTrue(np.allclose(v, _v, atol=1e-9), "Wrong v")
         self.assertTrue(np.allclose(tau, _tau, atol=1e-9), "Wrong tau")
         for name in self.p:
@@ -468,13 +522,16 @@ class TestWholeBodyStateAbstract(unittest.TestCase):
                 S[1], _S[1], "Wrong contact friction coefficient at " + name
             )
 
+
 class SampleHumanoidTest(TestWholeBodyStateAbstract):
     MODEL = pinocchio.buildSampleModelHumanoid()
     LOCKED_JOINTS = ["larm_elbow_joint", "rarm_elbow_joint"]
 
+
 class SampleManipulatorTest(TestWholeBodyStateAbstract):
     MODEL = pinocchio.buildSampleModelManipulator()
     LOCKED_JOINTS = ["wrist1_joint", "wrist2_joint"]
+
 
 if __name__ == "__main__":
     test_classes_to_run = [

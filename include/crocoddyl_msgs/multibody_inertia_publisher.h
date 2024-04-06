@@ -36,15 +36,13 @@ public:
       : node_("inertial_parameters_publisher"),
         pub_(node_.create_publisher<MultibodyInertia>(topic, 1)) {
     RCLCPP_INFO_STREAM(node_.get_logger(),
-                       "Publishing MultibodyInertia messages on "
-                           << topic);
+                       "Publishing MultibodyInertia messages on " << topic);
   }
 #else
   {
     ros::NodeHandle n;
     pub_.init(n, topic, 1);
-    ROS_INFO_STREAM("Publishing MultibodyInertia messages on "
-                    << topic);
+    ROS_INFO_STREAM("Publishing MultibodyInertia messages on " << topic);
   }
 #endif
 
@@ -58,7 +56,7 @@ public:
    * the first moment of inertial (mass * barycenter) and the rotational
    * inertia I = I_C + mS^T(c)S(c) where I_C has its origin at the
    * barycenter.
-   * 
+   *
    * @param parameters[in]  Multibody inertial parameters.
    */
   void publish(const std::map<std::string, const Eigen::Ref<const Vector10d>>
