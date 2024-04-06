@@ -173,6 +173,42 @@ public:
    */
   bool has_new_msg() const { return has_new_msg_; }
 
+  /**
+   * @brief Update the Pinocchio model's inertial parameters of a given body frame
+   *
+   * The inertial parameters vector is defined as [m, h_x, h_y, h_z,
+   * I_{xx}, I_{xy}, I_{yy}, I_{xz}, I_{yz}, I_{zz}]^T, where h=mc is
+   * the first moment of inertial (mass * barycenter) and the rotational
+   * inertia I = I_C + mS^T(c)S(c) where I_C has its origin at the
+   * barycenter. Additionally, the type of frame supported are joints,
+   * fixed joints, and bodies.
+   *
+   * @param model[in]      Pinocchio model
+   * @param body_name[in] Body name
+   * @param psi[in]        Inertial parameters
+   */
+  void update_body_inertial_parameters(
+      const std::string &body_name,
+      const Eigen::Ref<const Vector10d> &psi) {
+    updateBodyInertialParameters(model_, body_name, psi);
+  }
+
+  /**
+   * @brief Return the Pinocchio model's inertial parameters of a given body frame
+   *
+   * The inertial parameters vector is defined as [m, h_x, h_y, h_z,
+   * I_{xx}, I_{xy}, I_{yy}, I_{xz}, I_{yz}, I_{zz}]^T, where h=mc is
+   * the first moment of inertial (mass * barycenter) and the rotational
+   * inertia I = I_C + mS^T(c)S(c) where I_C has its origin at the
+   * barycenter.
+   * 
+   * @param body_name[in]  Body name
+   */
+  const Vector10d
+  get_body_inertial_parameters(const std::string &body_name) const {
+    return getBodyInertialParameters(model_, body_name);
+  }
+
 private:
 #ifdef ROS2
   std::shared_ptr<rclcpp::Node> node_;
@@ -219,6 +255,7 @@ private:
   std::map<std::string, Eigen::VectorXd> pd_tmp_;
   std::map<std::string, std::tuple<Eigen::VectorXd, ContactType, ContactStatus>>
       f_tmp_;
+  pinocchio::Inertia inertia_tmp_;
 
   void init(const std::vector<std::string> &locked_joints = DEFAULT_VECTOR) {
     const std::size_t nv_root = getRootNv(model_);
@@ -226,7 +263,10 @@ private:
       // Check the size of the reference configuration
       if (qref_.size() != model_.nq) {
 #ifdef ROS2
-        RCLCPP_ERROR_STREAM(node_->get_logger(), "Invalid argument: qref has wrong dimension (it should be " << std::to_string(model_.nq) << ")");
+        RCLCPP_ERROR_STREAM(
+            node_->get_logger(),
+            "Invalid argument: qref has wrong dimension (it should be "
+                << std::to_string(model_.nq) << ")");
 #else
         ROS_ERROR_STREAM(
             "Invalid argument: qref has wrong dimension (it should be "

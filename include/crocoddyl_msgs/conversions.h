@@ -9,6 +9,7 @@
 #ifndef CONVERSIONS_H_
 #define CONVERSIONS_H_
 
+#include <algorithm>
 #include <pinocchio/fwd.hpp>
 
 #include <pinocchio/algorithm/center-of-mass.hpp>
@@ -31,6 +32,7 @@
 #ifdef ROS2
 #include "crocoddyl_msgs/msg/control.hpp"
 #include "crocoddyl_msgs/msg/feedback_gain.hpp"
+#include "crocoddyl_msgs/msg/multibody_inertia.hpp"
 #include "crocoddyl_msgs/msg/state.hpp"
 #include "crocoddyl_msgs/msg/time_interval.hpp"
 #include <whole_body_state_msgs/msg/whole_body_state.hpp>
@@ -38,6 +40,7 @@
 #else
 #include "crocoddyl_msgs/Control.h"
 #include "crocoddyl_msgs/FeedbackGain.h"
+#include "crocoddyl_msgs/MultibodyInertia.h"
 #include "crocoddyl_msgs/State.h"
 #include "crocoddyl_msgs/TimeInterval.h"
 #include <whole_body_state_msgs/WholeBodyState.h>
@@ -45,6 +48,8 @@
 #endif
 
 namespace crocoddyl_msgs {
+
+typedef Eigen::Matrix<double, 10, 1> Vector10d;
 
 static std::vector<std::string> DEFAULT_VECTOR;
 
@@ -61,6 +66,8 @@ typedef crocoddyl_msgs::msg::TimeInterval TimeInterval;
 typedef crocoddyl_msgs::msg::State State;
 typedef crocoddyl_msgs::msg::Control Control;
 typedef crocoddyl_msgs::msg::FeedbackGain FeedbackGain;
+typedef crocoddyl_msgs::msg::BodyInertia BodyInertia;
+typedef crocoddyl_msgs::msg::MultibodyInertia MultibodyInertia;
 typedef whole_body_state_msgs::msg::WholeBodyState WholeBodyState;
 typedef whole_body_state_msgs::msg::WholeBodyTrajectory WholeBodyTrajectory;
 typedef whole_body_state_msgs::msg::ContactState ContactState;
@@ -69,6 +76,8 @@ typedef crocoddyl_msgs::TimeInterval TimeInterval;
 typedef crocoddyl_msgs::State State;
 typedef crocoddyl_msgs::Control Control;
 typedef crocoddyl_msgs::FeedbackGain FeedbackGain;
+typedef crocoddyl_msgs::BodyInertia BodyInertia;
+typedef crocoddyl_msgs::MultibodyInertia MultibodyInertia;
 typedef whole_body_state_msgs::WholeBodyState WholeBodyState;
 typedef whole_body_state_msgs::WholeBodyTrajectory WholeBodyTrajectory;
 typedef whole_body_state_msgs::ContactState ContactState;
@@ -96,7 +105,7 @@ static inline std::size_t getRootJointId(
  */
 template <int Options, template <typename, int> class JointCollectionTpl>
 static inline std::size_t getRootNq(
-  const pinocchio::ModelTpl<double, Options, JointCollectionTpl> &model) {
+    const pinocchio::ModelTpl<double, Options, JointCollectionTpl> &model) {
   const std::size_t root_joint_id = getRootJointId(model);
   return model.frames[root_joint_id].name != "universe" ? model.joints[root_joint_id].nq() : 0;
 }
@@ -108,9 +117,114 @@ static inline std::size_t getRootNq(
  */
 template <int Options, template <typename, int> class JointCollectionTpl>
 static inline std::size_t getRootNv(
-  const pinocchio::ModelTpl<double, Options, JointCollectionTpl> &model) {
+    const pinocchio::ModelTpl<double, Options, JointCollectionTpl> &model) {
   const std::size_t root_joint_id = getRootJointId(model);
   return model.frames[root_joint_id].name != "universe" ? model.joints[root_joint_id].nv() : 0;
+}
+
+/**
+ * @brief Update the Pinocchio model's inertial parameters of a given frame
+ *
+ * The inertial parameters vector is defined as [m, h_x, h_y, h_z,
+ * I_{xx}, I_{xy}, I_{yy}, I_{xz}, I_{yz}, I_{zz}]^T, where h=mc is
+ * the first moment of inertial (mass * barycenter) and the rotational
+ * inertia I = I_C + mS^T(c)S(c) where I_C has its origin at the
+ * barycenter. Additionally, the type of frame supported are joints,
+ * fixed joints, and bodies.
+ *
+ * @param model[in]      Pinocchio model
+ * @param frame_name[in] Frame name
+ * @param psi[in]        Inertial parameters
+ */
+template <int Options, template <typename, int> class JointCollectionTpl>
+void updateBodyInertialParameters(
+    pinocchio::ModelTpl<double, Options, JointCollectionTpl> &model,
+    const std::string &frame_name,
+    const Eigen::Ref<const Vector10d> &psi) {
+  if (model.existFrame(frame_name)) {
+    const std::size_t frame_id = model.getFrameId(frame_name);
+    switch (model.frames[frame_id].type) {
+      case pinocchio::FrameType::JOINT: {
+      const std::size_t joint_id = model.getJointId(frame_name);
+      model.inertias[joint_id] = pinocchio::Inertia::FromDynamicParameters(psi);
+      } break;
+      case pinocchio::FrameType::BODY: {
+//TODO: Update Pinocchio version after releasing https://github.com/stack-of-tasks/pinocchio/pull/2204
+#if (PINOCCHIO_MAJOR_VERSION >= 2 && PINOCCHIO_MINOR_VERSION >= 7 && PINOCCHIO_PATCH_VERSION >= 1)
+      const std::size_t fixed_joint_id = model.frames[frame_id].previousFrame;
+      const std::size_t joint_id = model.frames[fixed_joint_id].parent;
+      const pinocchio::SE3& jMb = model.frames[fixed_joint_id].placement;
+      const pinocchio::Inertia& I_updated = pinocchio::Inertia::FromDynamicParameters(psi);
+      const pinocchio::Inertia& dI = I_updated - model.frames[fixed_joint_id].inertia;
+      model.frames[fixed_joint_id].inertia = I_updated;
+      model.inertias[joint_id] += jMb.act(dI);
+#else
+      std::invalid_argument("The installed Pinocchio version doesn't support minus operators in inertia needed for " + frame_name);
+#endif
+      } break;
+      case pinocchio::FrameType::FIXED_JOINT: {
+#if (PINOCCHIO_MAJOR_VERSION >= 2 && PINOCCHIO_MINOR_VERSION >= 7 && PINOCCHIO_PATCH_VERSION >= 1)
+      const std::size_t joint_id = model.frames[frame_id].parent;
+      const pinocchio::SE3& jMb = model.frames[frame_id].placement;
+      const pinocchio::Inertia& I_updated = pinocchio::Inertia::FromDynamicParameters(psi);
+      const pinocchio::Inertia& dI = I_updated - model.frames[frame_id].inertia;
+      model.frames[frame_id].inertia = I_updated;
+      model.inertias[joint_id] += jMb.act(dI);
+#else
+      std::invalid_argument("The installed Pinocchio version doesn't support minus operators in inertia needed for " + frame_name);
+#endif
+      } break;
+      default: {
+        std::invalid_argument("The type of frame " + frame_name + " is not supported");
+        break;
+      }
+    }
+  } else {
+    std::invalid_argument("Doesn't exist " + frame_name + " frame");     
+  }
+}
+
+/**
+ * @brief Return the Pinocchio model's inertial parameters of a given frame
+ *
+ * The inertial parameters vector is defined as [m, h_x, h_y, h_z,
+ * I_{xx}, I_{xy}, I_{yy}, I_{xz}, I_{yz}, I_{zz}]^T, where h=mc is
+ * the first moment of inertial (mass * barycenter) and the rotational
+ * inertia I = I_C + mS^T(c)S(c) where I_C has its origin at the
+ * barycenter. Additionally, the type of frame supported are joints,
+ * fixed joints, and bodies
+ * 
+ * @param model[in]      Pinocchio model
+ * @param frame_name[in] Frame name
+ * @return inertial parameters.
+ */
+template <int Options, template <typename, int> class JointCollectionTpl>
+const Vector10d
+getBodyInertialParameters(
+    const pinocchio::ModelTpl<double, Options, JointCollectionTpl> &model,
+    const std::string &frame_name) {
+  if (model.existFrame(frame_name)) {
+    const std::size_t frame_id = model.getFrameId(frame_name);
+    switch (model.frames[frame_id].type) {
+      case pinocchio::FrameType::JOINT: {
+      const std::size_t joint_id = model.getJointId(frame_name);
+      return model.inertias[joint_id].toDynamicParameters();
+      } break;
+      case pinocchio::FrameType::BODY: {
+      const std::size_t fixed_joint_id = model.frames[frame_id].previousFrame;
+      return model.frames[fixed_joint_id].inertia.toDynamicParameters();
+      } break;
+      case pinocchio::FrameType::FIXED_JOINT: {
+      return model.frames[frame_id].inertia.toDynamicParameters();
+      } break;
+      default: {
+        std::invalid_argument("The type of frame " + frame_name + " is not supported");
+        break;
+      }
+    }
+  } else {
+    std::invalid_argument("Doesn't exist " + frame_name + " frame");     
+  }
 }
 
 /**
@@ -194,6 +308,27 @@ static inline void toMsg(Control &msg,
 }
 
 /**
+ * @brief Conversion of Eigen to crocoddyl_msgs::BodyInertia message
+ *
+ * @param[out] msg  ROS message that contains the inertial parameters
+ * @param[in] psi   Inertial parameters
+ */
+static inline void toMsg(BodyInertia &msg,
+                         const Eigen::Ref<const Vector10d> &psi) {
+  const double eps = Eigen::NumTraits<double>::epsilon();
+  msg.inertia.m = psi[0];
+  msg.inertia.com.x = psi[1] / std::max(psi[0], eps);
+  msg.inertia.com.y = psi[2] / std::max(psi[0], eps);
+  msg.inertia.com.z = psi[3] / std::max(psi[0], eps);
+  msg.inertia.ixx = psi[4];
+  msg.inertia.ixy = psi[5];
+  msg.inertia.iyy = psi[6];
+  msg.inertia.ixz = psi[7];
+  msg.inertia.iyz = psi[8];
+  msg.inertia.izz = psi[9];
+}
+
+/**
  * @brief Conversion from vectors to `whole_body_state_msgs::WholeBodyState`
  *
  * @param model[in]  Pinocchio model
@@ -206,14 +341,14 @@ static inline void toMsg(Control &msg,
  * @param tau[in]    Joint effort
  */
 template <int Options, template <typename, int> class JointCollectionTpl>
-static inline void toMsg(
-    const pinocchio::ModelTpl<double, Options, JointCollectionTpl> &model,
-    pinocchio::DataTpl<double, Options, JointCollectionTpl> &data,
-    WholeBodyState &msg, const double t,
-    const Eigen::Ref<const Eigen::VectorXd> &q,
-    const Eigen::Ref<const Eigen::VectorXd> &v,
-    const Eigen::Ref<const Eigen::VectorXd> &a,
-    const Eigen::Ref<const Eigen::VectorXd> &tau) {
+static inline void
+toMsg(const pinocchio::ModelTpl<double, Options, JointCollectionTpl> &model,
+      pinocchio::DataTpl<double, Options, JointCollectionTpl> &data,
+      WholeBodyState &msg, const double t,
+      const Eigen::Ref<const Eigen::VectorXd> &q,
+      const Eigen::Ref<const Eigen::VectorXd> &v,
+      const Eigen::Ref<const Eigen::VectorXd> &a,
+      const Eigen::Ref<const Eigen::VectorXd> &tau) {
   if (q.size() != model.nq) {
     throw std::invalid_argument("Expected q to be " + std::to_string(model.nq) +
                                 " but received " + std::to_string(q.size()));
@@ -521,6 +656,26 @@ static inline void fromMsg(const Control &msg, Eigen::Ref<Eigen::VectorXd> u,
 }
 
 /**
+ * @brief Conversion of inertial parameters from a 
+ * crocoddyl_msgs::BodyInertia message to Eigen
+ *
+ * @param[in] msg   ROS message that contains the inertial parameters
+ * @param[out] psi  Inertial parameters
+ */
+static inline void fromMsg(const BodyInertia &msg, Eigen::Ref<Vector10d> psi) {
+  psi(0) = msg.inertia.m;
+  psi(1) = msg.inertia.com.x * psi(0);
+  psi(2) = msg.inertia.com.y * psi(0);
+  psi(3) = msg.inertia.com.z * psi(0);
+  psi(4) = msg.inertia.ixx;
+  psi(5) = msg.inertia.ixy;
+  psi(6) = msg.inertia.iyy;
+  psi(7) = msg.inertia.ixz;
+  psi(8) = msg.inertia.iyz;
+  psi(9) = msg.inertia.izz;
+}
+
+/**
  * @brief Conversion from whole_body_state_msgs::WholeBodyState to deserialized
  * quantities
  *
@@ -561,7 +716,6 @@ fromMsg(const pinocchio::ModelTpl<double, Options, JointCollectionTpl> &model,
     throw std::invalid_argument("Expected a to be " + std::to_string(model.nv) +
                                 " but received " + std::to_string(v.size()));
   }
-  const std::size_t root_joint_id = getRootJointId(model);
   const std::size_t nv_root = getRootNv(model);
   const std::size_t njoints = model.nv - nv_root;
   if (tau.size() != static_cast<int>(njoints)) {
@@ -725,7 +879,7 @@ static inline void fromReduced(
                                 std::to_string(reduced_model.nv) +
                                 " but received " + std::to_string(v_in.size()));
   }
-  if (static_cast<std::size_t>(tau_out.size()) != njoints) {
+  if (static_cast<std::size_t>(tau_out.size()) != model.nv - nv_root) {
     throw std::invalid_argument(
         "Expected tau_out to be " + std::to_string(njoints) +
         " but received " + std::to_string(tau_out.size()));
@@ -744,16 +898,119 @@ static inline void fromReduced(
   for (std::size_t j = root_joint_id + 1;
        j < static_cast<std::size_t>(reduced_model.njoints); ++j) {
     const std::string &name = reduced_model.names[j];
-    JointModel joint = model.joints[model.getJointId(name)];
-    JointModel reduced_joint = model.joints[reduced_model.getJointId(name)];
+    const JointModel joint = model.joints[model.getJointId(name)];
+    const JointModel reduced_joint =
+        model.joints[reduced_model.getJointId(name)];
     q_out(joint.idx_q()) = q_in(reduced_joint.idx_q());
     v_out(joint.idx_v()) = v_in(reduced_joint.idx_v());
     tau_out(joint.idx_v() - nv_root) = tau_in(reduced_joint.idx_v() - nv_root);
   }
   for (pinocchio::JointIndex joint_id : locked_joint_ids) {
-    JointModel joint = model.joints[joint_id];
+    const JointModel joint = model.joints[joint_id];
     q_out(joint.idx_q()) = qref(joint.idx_q());
     v_out(joint.idx_v()) = 0.;
+    tau_out(joint.idx_v() - nv_root) = 0.;
+  }
+}
+
+/**
+ * @brief Conversion from reduced position, velocity, acceleration and effort to
+ * a full one
+ *
+ * @param model[in]  Pinocchio model
+ * @param reduced_model[in]  Reduced Pinocchio model
+ * @param q_out[out]  Configuration vector (dimension: model.nq)
+ * @param v_out[out]  Generalized velocity (dimension: model.nv)
+ * @param a_out[out]  Generalized acceleration (dimension: model.nv)
+ * @param tau_out[out]  Joint effort (dimension: model.nv - nv_root)
+ * @param q[in]  Reduced configuration vector (dimension: reduced_model.nq)
+ * @param v[in]  Reduced generalized velocity (dimension: reduced_model.nv)
+ * @param a[in]  Reduced generalized acceleration (dimension: reduced_model.nv)
+ * @param tau[in]  Reduced joint effort (dimension: reduced_model.nv - nv_root)
+ * @param qref[in]  Reference configuration used in the reduced model
+ * @param locked_joint_ids[in]  Ids of the locked joints
+ */
+template <int Options, template <typename, int> class JointCollectionTpl>
+static inline void fromReduced(
+    const pinocchio::ModelTpl<double, Options, JointCollectionTpl> &model,
+    const pinocchio::ModelTpl<double, Options, JointCollectionTpl>
+        &reduced_model,
+    Eigen::Ref<Eigen::VectorXd> q_out, Eigen::Ref<Eigen::VectorXd> v_out,
+    Eigen::Ref<Eigen::VectorXd> a_out, Eigen::Ref<Eigen::VectorXd> tau_out,
+    const Eigen::Ref<const Eigen::VectorXd> &q_in,
+    const Eigen::Ref<const Eigen::VectorXd> &v_in,
+    const Eigen::Ref<const Eigen::VectorXd> &a_in,
+    const Eigen::Ref<const Eigen::VectorXd> &tau_in,
+    const Eigen::Ref<const Eigen::VectorXd> &qref,
+    const std::vector<pinocchio::JointIndex> &locked_joint_ids) {
+  const std::size_t root_joint_id = getRootJointId(model);
+  const std::size_t nq_root = getRootNq(model);
+  const std::size_t nv_root = getRootNv(model);
+  const std::size_t njoints = model.nv - nv_root;
+  const std::size_t njoints_reduced = reduced_model.nv - nv_root;
+  if (q_out.size() != model.nq) {
+    throw std::invalid_argument("Expected q_out to be " +
+                                std::to_string(model.nq) + " but received " +
+                                std::to_string(q_out.size()));
+  }
+  if (q_in.size() != reduced_model.nq) {
+    throw std::invalid_argument("Expected q_in to be " +
+                                std::to_string(reduced_model.nq) +
+                                " but received " + std::to_string(q_in.size()));
+  }
+  if (v_out.size() != model.nv) {
+    throw std::invalid_argument("Expected v_out to be " +
+                                std::to_string(model.nv) + " but received " +
+                                std::to_string(v_out.size()));
+  }
+  if (v_in.size() != reduced_model.nv) {
+    throw std::invalid_argument("Expected v_in to be " +
+                                std::to_string(reduced_model.nv) +
+                                " but received " + std::to_string(v_in.size()));
+  }
+  if (a_out.size() != model.nv) {
+    throw std::invalid_argument("Expected a_out to be " +
+                                std::to_string(model.nv) + " but received " +
+                                std::to_string(a_out.size()));
+  }
+  if (a_in.size() != reduced_model.nv) {
+    throw std::invalid_argument("Expected a_in to be " +
+                                std::to_string(reduced_model.nv) +
+                                " but received " + std::to_string(a_in.size()));
+  }
+  if (static_cast<std::size_t>(tau_out.size()) != njoints) {
+    throw std::invalid_argument(
+        "Expected tau_out to be " + std::to_string(njoints) +
+        " but received " + std::to_string(tau_out.size()));
+  }
+  if (static_cast<std::size_t>(tau_in.size()) != njoints_reduced) {
+    throw std::invalid_argument(
+        "Expected tau_in to be " + std::to_string(njoints_reduced) +
+        " but received " + std::to_string(tau_in.size()));
+  }
+
+  typedef pinocchio::ModelTpl<double, Options, JointCollectionTpl> Model;
+  typedef typename Model::JointModel JointModel;
+
+  q_out.head(nq_root) = q_in.head(nq_root);
+  v_out.head(nv_root) = v_in.head(nv_root);
+  a_out.head(nv_root) = a_in.head(nv_root);
+  for (std::size_t j = root_joint_id + 1;
+       j < static_cast<std::size_t>(reduced_model.njoints); ++j) {
+    const std::string &name = reduced_model.names[j];
+    const JointModel joint = model.joints[model.getJointId(name)];
+    const JointModel reduced_joint =
+        model.joints[reduced_model.getJointId(name)];
+    q_out(joint.idx_q()) = q_in(reduced_joint.idx_q());
+    v_out(joint.idx_v()) = v_in(reduced_joint.idx_v());
+    a_out(joint.idx_v()) = a_in(reduced_joint.idx_v());
+    tau_out(joint.idx_v() - nv_root) = tau_in(reduced_joint.idx_v() - nv_root);
+  }
+  for (pinocchio::JointIndex joint_id : locked_joint_ids) {
+    const JointModel joint = model.joints[joint_id];
+    q_out(joint.idx_q()) = qref(joint.idx_q());
+    v_out(joint.idx_v()) = 0.;
+    a_out(joint.idx_v()) = 0.;
     tau_out(joint.idx_v() - nv_root) = 0.;
   }
 }
@@ -825,10 +1082,104 @@ toReduced(const pinocchio::ModelTpl<double, Options, JointCollectionTpl> &model,
   for (std::size_t j = root_joint_id + 1;
        j < static_cast<std::size_t>(reduced_model.njoints); ++j) {
     const std::string &name = reduced_model.names[j];
-    JointModel joint = model.joints[model.getJointId(name)];
-    JointModel reduced_joint = model.joints[reduced_model.getJointId(name)];
+    const JointModel joint = model.joints[model.getJointId(name)];
+    const JointModel reduced_joint =
+        model.joints[reduced_model.getJointId(name)];
     q_out(reduced_joint.idx_q()) = q_in(joint.idx_q());
     v_out(reduced_joint.idx_v()) = v_in(joint.idx_v());
+    tau_out(reduced_joint.idx_v() - nv_root) = tau_in(joint.idx_v() - nv_root);
+  }
+}
+
+/**
+ * @brief Conversion to reduced position, velocity, acceleration and effort from
+ * a full one
+ *
+ * @param model[in]  Pinocchio model
+ * @param reduced_model[in]  Reduced Pinocchio model
+ * @param q_out[out]  Reduced configuration vector (dimension: reduced_model.nq)
+ * @param v_out[out]  Reduced generalized velocity (dimension: reduced_model.nv)
+ * @param a_out[out]  Reduced generalized velocity (dimension: reduced_model.nv)
+ * @param tau_out[out]  Reduced joint effort (dimension: reduced_model.nv -
+ * nv_root)
+ * @param q[in]  Configuration vector (dimension: model.nq)
+ * @param v[in]  Generalized velocity (dimension: model.nv)
+ * @param a[in]  Generalized velocity (dimension: model.nv)
+ * @param tau[in]  Joint effort (dimension: model.nv - nv_root)
+ */
+template <int Options, template <typename, int> class JointCollectionTpl>
+static inline void
+toReduced(const pinocchio::ModelTpl<double, Options, JointCollectionTpl> &model,
+          const pinocchio::ModelTpl<double, Options, JointCollectionTpl>
+              &reduced_model,
+          Eigen::Ref<Eigen::VectorXd> q_out, Eigen::Ref<Eigen::VectorXd> v_out,
+          Eigen::Ref<Eigen::VectorXd> a_out,
+          Eigen::Ref<Eigen::VectorXd> tau_out,
+          const Eigen::Ref<const Eigen::VectorXd> &q_in,
+          const Eigen::Ref<const Eigen::VectorXd> &v_in,
+          const Eigen::Ref<const Eigen::VectorXd> &a_in,
+          const Eigen::Ref<const Eigen::VectorXd> &tau_in) {
+  const std::size_t root_joint_id = getRootJointId(model);
+  const std::size_t nq_root = getRootNq(model);
+  const std::size_t nv_root = getRootNv(model);
+  const std::size_t njoints = model.nv - nv_root;
+  const std::size_t njoints_reduced = reduced_model.nv - nv_root;
+  if (q_out.size() != reduced_model.nq) {
+    throw std::invalid_argument(
+        "Expected q_out to be " + std::to_string(reduced_model.nq) +
+        " but received " + std::to_string(q_out.size()));
+  }
+  if (q_in.size() != model.nq) {
+    throw std::invalid_argument("Expected q_in to be " +
+                                std::to_string(model.nq) + " but received " +
+                                std::to_string(q_in.size()));
+  }
+  if (v_out.size() != reduced_model.nv) {
+    throw std::invalid_argument(
+        "Expected v_out to be " + std::to_string(reduced_model.nv) +
+        " but received " + std::to_string(v_out.size()));
+  }
+  if (v_in.size() != model.nv) {
+    throw std::invalid_argument("Expected v_in to be " +
+                                std::to_string(model.nv) + " but received " +
+                                std::to_string(v_in.size()));
+  }
+  if (a_out.size() != reduced_model.nv) {
+    throw std::invalid_argument(
+        "Expected a_out to be " + std::to_string(reduced_model.nv) +
+        " but received " + std::to_string(a_out.size()));
+  }
+  if (a_in.size() != model.nv) {
+    throw std::invalid_argument("Expected a_in to be " +
+                                std::to_string(model.nv) + " but received " +
+                                std::to_string(a_in.size()));
+  }
+  if (static_cast<std::size_t>(tau_out.size()) != njoints_reduced) {
+    throw std::invalid_argument(
+        "Expected tau_out to be " + std::to_string(njoints_reduced) +
+        " but received " + std::to_string(tau_out.size()));
+  }
+  if (static_cast<std::size_t>(tau_in.size()) != njoints) {
+    throw std::invalid_argument(
+        "Expected tau_in to be " + std::to_string(njoints) +
+        " but received " + std::to_string(tau_in.size()));
+  }
+
+  typedef pinocchio::ModelTpl<double, Options, JointCollectionTpl> Model;
+  typedef typename Model::JointModel JointModel;
+
+  q_out.head(nq_root) = q_in.head(nq_root);
+  v_out.head(nv_root) = v_in.head(nv_root);
+  a_out.head(nv_root) = a_in.head(nv_root);
+  for (std::size_t j = root_joint_id + 1;
+       j < static_cast<std::size_t>(reduced_model.njoints); ++j) {
+    const std::string &name = reduced_model.names[j];
+    const JointModel joint = model.joints[model.getJointId(name)];
+    const JointModel reduced_joint =
+        model.joints[reduced_model.getJointId(name)];
+    q_out(reduced_joint.idx_q()) = q_in(joint.idx_q());
+    v_out(reduced_joint.idx_v()) = v_in(joint.idx_v());
+    a_out(reduced_joint.idx_v()) = a_in(joint.idx_v());
     tau_out(reduced_joint.idx_v() - nv_root) = tau_in(joint.idx_v() - nv_root);
   }
 }
@@ -863,7 +1214,6 @@ toReduced_return(
     const Eigen::Ref<const Eigen::VectorXd> &q_in,
     const Eigen::Ref<const Eigen::VectorXd> &v_in,
     const Eigen::Ref<const Eigen::VectorXd> &tau_in) {
-  const std::size_t root_joint_id = getRootJointId(model);
   const std::size_t nv_root = getRootNv(model);
   Eigen::VectorXd q_out = Eigen::VectorXd::Zero(reduced_model.nq);
   Eigen::VectorXd v_out = Eigen::VectorXd::Zero(reduced_model.nv);

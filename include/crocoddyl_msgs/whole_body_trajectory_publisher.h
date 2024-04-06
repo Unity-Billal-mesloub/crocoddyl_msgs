@@ -23,14 +23,15 @@ namespace crocoddyl_msgs {
 
 static std::vector<std::map<std::string, pinocchio::SE3>> DEFAULT_SE3_VECTOR;
 
-static std::vector<std::map<std::string, pinocchio::Motion>> DEFAULT_MOTION_VECTOR;
+static std::vector<std::map<std::string, pinocchio::Motion>>
+    DEFAULT_MOTION_VECTOR;
 
-static std::vector<
-              std::map<std::string, std::tuple<pinocchio::Force, ContactType,
-                                               ContactStatus>>> DEFAULT_FORCE_VECTOR;
+static std::vector<std::map<
+    std::string, std::tuple<pinocchio::Force, ContactType, ContactStatus>>>
+    DEFAULT_FORCE_VECTOR;
 
-static std::vector<
-              std::map<std::string, std::pair<Eigen::Vector3d, double>>> DEFAULT_FRICTION_VECTOR;
+static std::vector<std::map<std::string, std::pair<Eigen::Vector3d, double>>>
+    DEFAULT_FRICTION_VECTOR;
 
 class WholeBodyTrajectoryRosPublisher {
 public:
@@ -117,16 +118,20 @@ public:
    * @param fs[in]   Vector of contact forces, types and statuses
    * @param ss[in]   Vector of contact surfaces and friction coefficients
    */
-  void
-  publish(const std::vector<double> &ts, const std::vector<Eigen::VectorXd> &xs,
-          const std::vector<Eigen::VectorXd> &us,
-          const std::vector<std::map<std::string, pinocchio::SE3>> &ps = DEFAULT_SE3_VECTOR,
-          const std::vector<std::map<std::string, pinocchio::Motion>> &pds = DEFAULT_MOTION_VECTOR,
-          const std::vector<
-              std::map<std::string, std::tuple<pinocchio::Force, ContactType,
-                                               ContactStatus>>> &fs = DEFAULT_FORCE_VECTOR,
-          const std::vector<
-              std::map<std::string, std::pair<Eigen::Vector3d, double>>> &ss = DEFAULT_FRICTION_VECTOR) {
+  void publish(
+      const std::vector<double> &ts, const std::vector<Eigen::VectorXd> &xs,
+      const std::vector<Eigen::VectorXd> &us,
+      const std::vector<std::map<std::string, pinocchio::SE3>> &ps =
+          DEFAULT_SE3_VECTOR,
+      const std::vector<std::map<std::string, pinocchio::Motion>> &pds =
+          DEFAULT_MOTION_VECTOR,
+      const std::vector<
+          std::map<std::string,
+                   std::tuple<pinocchio::Force, ContactType, ContactStatus>>>
+          &fs = DEFAULT_FORCE_VECTOR,
+      const std::vector<
+          std::map<std::string, std::pair<Eigen::Vector3d, double>>> &ss =
+          DEFAULT_FRICTION_VECTOR) {
     if (pub_.trylock()) {
       if (ts.size() != xs.size()) {
         throw std::invalid_argument("The size of the ts vector needs to equal "
@@ -139,9 +144,9 @@ public:
       }
       if (ps.size() != 0) {
         if (ts.size() != ps.size()) {
-          throw std::invalid_argument(
-              "If provided, the size of the ps vector needs to equal the size of "
-              "the ts vector.");
+          throw std::invalid_argument("If provided, the size of the ps vector "
+                                      "needs to equal the size of "
+                                      "the ts vector.");
         }
         if (ts.size() != pds.size()) {
           throw std::invalid_argument("If provided, the size of the pds vector "
@@ -149,14 +154,14 @@ public:
                                       "the ts vector.");
         }
         if (ts.size() != fs.size()) {
-          throw std::invalid_argument(
-              "If provided, the size of the fs vector needs to equal the size of "
-              "the ts vector.");
+          throw std::invalid_argument("If provided, the size of the fs vector "
+                                      "needs to equal the size of "
+                                      "the ts vector.");
         }
         if (ts.size() != ss.size()) {
-          throw std::invalid_argument(
-              "If provided, the size of the ss vector needs to equal the size of "
-              "the ts vector.");
+          throw std::invalid_argument("If provided, the size of the ss vector "
+                                      "needs to equal the size of "
+                                      "the ts vector.");
         }
       }
       pub_.msg_.header.frame_id = odom_frame_;
@@ -173,12 +178,12 @@ public:
                       xs[i].head(reduced_model_.nq),
                       xs[i].tail(reduced_model_.nv), us[i], qref_, joint_ids_);
           if (ps.size() != 0) {
-            crocoddyl_msgs::toMsg(model_, data_, pub_.msg_.trajectory[i],
-                                  ts[i], qfull_, vfull_, a_, ufull_, ps[i],
-                                  pds[i], fs[i], ss[i]);
+            crocoddyl_msgs::toMsg(model_, data_, pub_.msg_.trajectory[i], ts[i],
+                                  qfull_, vfull_, a_, ufull_, ps[i], pds[i],
+                                  fs[i], ss[i]);
           } else {
-            crocoddyl_msgs::toMsg(model_, data_, pub_.msg_.trajectory[i],
-                                  ts[i], qfull_, vfull_, a_, ufull_);            
+            crocoddyl_msgs::toMsg(model_, data_, pub_.msg_.trajectory[i], ts[i],
+                                  qfull_, vfull_, a_, ufull_);
           }
         } else {
           if (ps.size() != 0) {
@@ -205,6 +210,42 @@ public:
     }
   }
 
+  /**
+   * @brief Update the Pinocchio model's inertial parameters of a given frame
+   *
+   * The inertial parameters vector is defined as [m, h_x, h_y, h_z,
+   * I_{xx}, I_{xy}, I_{yy}, I_{xz}, I_{yz}, I_{zz}]^T, where h=mc is
+   * the first moment of inertial (mass * barycenter) and the rotational
+   * inertia I = I_C + mS^T(c)S(c) where I_C has its origin at the
+   * barycenter. Additionally, the type of frame supported are joints,
+   * fixed joints, and bodies
+   *
+   * @param model[in]      Pinocchio model
+   * @param body_name[in] Body name
+   * @param psi[in]        Inertial parameters
+   */
+  void update_body_inertial_parameters(
+      const std::string &body_name,
+      const Eigen::Ref<const Vector10d> &psi) {
+    updateBodyInertialParameters(model_, body_name, psi);
+  }
+
+  /**
+   * @brief Return the Pinocchio model's inertial parameters of a given body frame
+   *
+   * The inertial parameters vector is defined as [m, h_x, h_y, h_z,
+   * I_{xx}, I_{xy}, I_{yy}, I_{xz}, I_{yz}, I_{zz}]^T, where h=mc is
+   * the first moment of inertial (mass * barycenter) and the rotational
+   * inertia I = I_C + mS^T(c)S(c) where I_C has its origin at the
+   * barycenter.
+   * 
+   * @param body_name[in]  Body name
+   */
+  const Vector10d
+  get_body_inertial_parameters(const std::string &body_name) const {
+    return getBodyInertialParameters(model_, body_name);
+  }
+
 private:
 #ifdef ROS2
   rclcpp::Node node_;
@@ -221,6 +262,7 @@ private:
   Eigen::VectorXd vfull_;
   Eigen::VectorXd ufull_;
   bool is_reduced_model_;
+  pinocchio::Inertia inertia_tmp_;
 
   void init(const std::vector<std::string> &locked_joints = DEFAULT_VECTOR) {
     a_.setZero();
@@ -229,7 +271,10 @@ private:
       // Check the size of the reference configuration
       if (qref_.size() != model_.nq) {
 #ifdef ROS2
-        RCLCPP_ERROR_STREAM(node_.get_logger(), "Invalid argument: qref has wrong dimension (it should be " << std::to_string(model_.nq) << ")");
+        RCLCPP_ERROR_STREAM(
+            node_.get_logger(),
+            "Invalid argument: qref has wrong dimension (it should be "
+                << std::to_string(model_.nq) << ")");
 #else
         ROS_ERROR_STREAM(
             "Invalid argument: qref has wrong dimension (it should be "
@@ -252,7 +297,6 @@ private:
       pinocchio::buildReducedModel(model_, joint_ids_, qref_, reduced_model_);
 
       // Initialize the vectors and dimensions
-      const std::size_t root_joint_id = getRootJointId(model_);
       const std::size_t nv_root = getRootNv(model_);
       qfull_ = Eigen::VectorXd::Zero(model_.nq);
       vfull_ = Eigen::VectorXd::Zero(model_.nv);

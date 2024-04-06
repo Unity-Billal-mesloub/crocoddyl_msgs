@@ -25,10 +25,12 @@ static std::map<std::string, pinocchio::SE3> DEFAULT_SE3;
 
 static std::map<std::string, pinocchio::Motion> DEFAULT_MOTION;
 
-static std::map<std::string, std::tuple<pinocchio::Force, ContactType,
-                                                 ContactStatus>> DEFAULT_FORCE;
+static std::map<std::string,
+                std::tuple<pinocchio::Force, ContactType, ContactStatus>>
+    DEFAULT_FORCE;
 
-static std::map<std::string, std::pair<Eigen::Vector3d, double>> DEFAULT_FRICTION;
+static std::map<std::string, std::pair<Eigen::Vector3d, double>>
+    DEFAULT_FRICTION;
 
 class WholeBodyStateRosPublisher {
 public:
@@ -81,8 +83,8 @@ public:
 #ifdef ROS2
       : node_("whole_body_state_publisher"),
         pub_(node_.create_publisher<WholeBodyState>(topic, 1)), model_(model),
-        data_(model), odom_frame_(frame), a_(model.nv),
-        qref_(qref), is_reduced_model_(true) {
+        data_(model), odom_frame_(frame), a_(model.nv), qref_(qref),
+        is_reduced_model_(true) {
     RCLCPP_INFO_STREAM(node_.get_logger(),
                        "Publishing WholeBodyState messages on "
                            << topic << " (frame: " << frame << ")");
@@ -113,28 +115,104 @@ public:
    * @param f[in]    Contact force, type and status
    * @param s[in]    Contact surface and friction coefficient
    */
-  void
-  publish(const double t, const Eigen::Ref<const Eigen::VectorXd> &q,
-          const Eigen::Ref<const Eigen::VectorXd> &v,
-          const Eigen::Ref<const Eigen::VectorXd> &tau,
-          const std::map<std::string, pinocchio::SE3> &p = DEFAULT_SE3,
-          const std::map<std::string, pinocchio::Motion> &pd = DEFAULT_MOTION,
-          const std::map<std::string, std::tuple<pinocchio::Force, ContactType,
-                                                 ContactStatus>> &f = DEFAULT_FORCE,
-          const std::map<std::string, std::pair<Eigen::Vector3d, double>> &s = DEFAULT_FRICTION) {
+  void publish(
+      const double t, const Eigen::Ref<const Eigen::VectorXd> &q,
+      const Eigen::Ref<const Eigen::VectorXd> &v,
+      const Eigen::Ref<const Eigen::VectorXd> &tau,
+      const std::map<std::string, pinocchio::SE3> &p = DEFAULT_SE3,
+      const std::map<std::string, pinocchio::Motion> &pd = DEFAULT_MOTION,
+      const std::map<std::string, std::tuple<pinocchio::Force, ContactType,
+                                             ContactStatus>> &f = DEFAULT_FORCE,
+      const std::map<std::string, std::pair<Eigen::Vector3d, double>> &s =
+          DEFAULT_FRICTION) {
     if (pub_.trylock()) {
       pub_.msg_.header.frame_id = odom_frame_;
       if (is_reduced_model_) {
         fromReduced(model_, reduced_model_, qfull_, vfull_, ufull_, q, v, tau,
                     qref_, joint_ids_);
-        crocoddyl_msgs::toMsg(model_, data_, pub_.msg_, t, qfull_,
-                              vfull_, a_, ufull_, p, pd, f, s);
+        crocoddyl_msgs::toMsg(model_, data_, pub_.msg_, t, qfull_, vfull_, a_,
+                              ufull_, p, pd, f, s);
       } else {
         crocoddyl_msgs::toMsg(model_, data_, pub_.msg_, t, q, v, a_, tau, p, pd,
                               f, s);
       }
       pub_.unlockAndPublish();
     }
+  }
+
+  /**
+   * @brief Publish a whole-body state ROS message
+   *
+   * @param t[in]    Time in secs
+   * @param q[in]    Configuration vector (dimension: model.nq)
+   * @param v[in]    Generalized velocity (dimension: model.nv)
+   * @param a[in]    Generalized acceleration (dimension: model.nv)
+   * @param tau[in]  Joint effort (dimension: model.nv)
+   * @param p[in]    Contact position
+   * @param pd[in]   Contact velocity
+   * @param f[in]    Contact force, type and status
+   * @param s[in]    Contact surface and friction coefficient
+   */
+  void publish(
+      const double t, const Eigen::Ref<const Eigen::VectorXd> &q,
+      const Eigen::Ref<const Eigen::VectorXd> &v,
+      const Eigen::Ref<const Eigen::VectorXd> &a,
+      const Eigen::Ref<const Eigen::VectorXd> &tau,
+      const std::map<std::string, pinocchio::SE3> &p = DEFAULT_SE3,
+      const std::map<std::string, pinocchio::Motion> &pd = DEFAULT_MOTION,
+      const std::map<std::string, std::tuple<pinocchio::Force, ContactType,
+                                             ContactStatus>> &f = DEFAULT_FORCE,
+      const std::map<std::string, std::pair<Eigen::Vector3d, double>> &s =
+          DEFAULT_FRICTION) {
+    if (pub_.trylock()) {
+      pub_.msg_.header.frame_id = odom_frame_;
+      if (is_reduced_model_) {
+        fromReduced(model_, reduced_model_, qfull_, vfull_, afull_, ufull_, q,
+                    v, a, tau, qref_, joint_ids_);
+        crocoddyl_msgs::toMsg(model_, data_, pub_.msg_, t, qfull_, vfull_,
+                              afull_, ufull_, p, pd, f, s);
+      } else {
+        crocoddyl_msgs::toMsg(model_, data_, pub_.msg_, t, q, v, a, tau, p, pd,
+                              f, s);
+      }
+      pub_.unlockAndPublish();
+    }
+  }
+
+  /**
+   * @brief Update the Pinocchio model's inertial parameters of a given body frame
+   *
+   * The inertial parameters vector is defined as [m, h_x, h_y, h_z,
+   * I_{xx}, I_{xy}, I_{yy}, I_{xz}, I_{yz}, I_{zz}]^T, where h=mc is
+   * the first moment of inertial (mass * barycenter) and the rotational
+   * inertia I = I_C + mS^T(c)S(c) where I_C has its origin at the
+   * barycenter. Additionally, the type of frame supported are joints,
+   * fixed joints, and bodies.
+   *
+   * @param model[in]      Pinocchio model
+   * @param body_name[in] Body name
+   * @param psi[in]        Inertial parameters
+   */
+  void update_body_inertial_parameters(
+      const std::string &body_name,
+      const Eigen::Ref<const Vector10d> &psi) {
+    updateBodyInertialParameters(model_, body_name, psi);
+  }
+
+  /**
+   * @brief Return the Pinocchio model's inertial parameters of a given body frame
+   *
+   * The inertial parameters vector is defined as [m, h_x, h_y, h_z,
+   * I_{xx}, I_{xy}, I_{yy}, I_{xz}, I_{yz}, I_{zz}]^T, where h=mc is
+   * the first moment of inertial (mass * barycenter) and the rotational
+   * inertia I = I_C + mS^T(c)S(c) where I_C has its origin at the
+   * barycenter.
+   * 
+   * @param body_name[in]  Body name
+   */
+  const Vector10d
+  get_body_inertial_parameters(const std::string &body_name) const {
+    return getBodyInertialParameters(model_, body_name);
   }
 
 private:
@@ -151,8 +229,10 @@ private:
   Eigen::VectorXd qref_;
   Eigen::VectorXd qfull_;
   Eigen::VectorXd vfull_;
+  Eigen::VectorXd afull_;
   Eigen::VectorXd ufull_;
   bool is_reduced_model_;
+  pinocchio::Inertia inertia_tmp_;
 
   void init(const std::vector<std::string> &locked_joints = DEFAULT_VECTOR) {
     a_.setZero();
@@ -161,7 +241,10 @@ private:
       // Check the size of the reference configuration
       if (qref_.size() != model_.nq) {
 #ifdef ROS2
-        RCLCPP_ERROR_STREAM(node_.get_logger(), "Invalid argument: qref has wrong dimension (it should be " << std::to_string(model_.nq) << ")");
+        RCLCPP_ERROR_STREAM(
+            node_.get_logger(),
+            "Invalid argument: qref has wrong dimension (it should be "
+                << std::to_string(model_.nq) << ")");
 #else
         ROS_ERROR_STREAM(
             "Invalid argument: qref has wrong dimension (it should be "
@@ -186,6 +269,7 @@ private:
       const std::size_t nv_root = getRootNv(model_);
       qfull_ = Eigen::VectorXd::Zero(model_.nq);
       vfull_ = Eigen::VectorXd::Zero(model_.nv);
+      afull_ = Eigen::VectorXd::Zero(model_.nv);
       ufull_ = Eigen::VectorXd::Zero(model_.nv - nv_root);
     } else {
       is_reduced_model_ = false;

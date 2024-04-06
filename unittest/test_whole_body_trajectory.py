@@ -330,6 +330,106 @@ class TestWholeBodyTrajectoryAbstract(unittest.TestCase):
                     "Wrong contact friction coefficient at " + name + ", " + str(i),
                 )
 
+    def test_update_model(self):
+        sub = WholeBodyTrajectoryRosSubscriber(self.MODEL, "whole_body_trajectory_update_model")
+        pub = WholeBodyTrajectoryRosPublisher(self.MODEL, "whole_body_trajectory_update_model")
+        time.sleep(1)
+        # update inertia parameters
+        if pinocchio.__version__ >= "2.7.1":
+            frame_names = [f.name for f in self.MODEL.frames if f.name != "universe" and (f.type == pinocchio.BODY or f.type == pinocchio.JOINT or f.type == pinocchio.FIXED_JOINT)]
+        else:
+            frame_names = [f.name for f in self.MODEL.frames if f.type == pinocchio.JOINT]
+        new_parameters = []
+        for name in frame_names:
+            psi = pinocchio.Inertia.Random().toDynamicParameters()
+            new_parameters.append(psi)
+            pub.update_body_inertial_parameters(name, psi)
+            sub.update_body_inertial_parameters(name, psi)
+        # get inertias
+        for i, name in enumerate(frame_names):
+            pub_parameters = pub.get_body_inertial_parameters(name)
+            sub_parameters = sub.get_body_inertial_parameters(name)
+            self.assertTrue(
+                np.allclose(
+                    pub_parameters,
+                    new_parameters[i],
+                    atol=1e-9,
+                ),
+                "Wrong publisher's inertial parameters in frame "
+                + name
+                + "\n"
+                + "desired:\n"
+                + str(new_parameters[i])
+                + "obtained:\n"
+                + str(pub_parameters),
+            )
+            self.assertTrue(
+                np.allclose(
+                    sub_parameters,
+                    new_parameters[i],
+                    atol=1e-9,
+                ),
+                "Wrong subscriber's inertial parameters in frame "
+                + name
+                + "\n"
+                + "desired:\n"
+                + str(new_parameters[i])
+                + "obtained:\n"
+                + str(sub_parameters),
+            )
+
+    def test_update_reduced_model(self):
+        qref = pinocchio.randomConfiguration(self.MODEL)
+        reduced_model = pinocchio.buildReducedModel(
+            self.MODEL, [self.MODEL.getJointId(name) for name in self.LOCKED_JOINTS], qref
+        )
+        sub = WholeBodyTrajectoryRosSubscriber(reduced_model, "whole_body_trajectory_update_model")
+        pub = WholeBodyTrajectoryRosPublisher(reduced_model, "whole_body_trajectory_update_model")
+        time.sleep(1)
+        # update inertia parameters
+        if pinocchio.__version__ >= "2.7.1":
+            frame_names = [f.name for f in reduced_model.frames if f.name != "universe" and (f.type == pinocchio.BODY or f.type == pinocchio.JOINT or f.type == pinocchio.FIXED_JOINT)]
+        else:
+            frame_names = [f.name for f in reduced_model.frames if f.type == pinocchio.JOINT]
+        new_parameters = []
+        for name in frame_names:
+            psi = pinocchio.Inertia.Random().toDynamicParameters()
+            new_parameters.append(psi)
+            pub.update_body_inertial_parameters(name, psi)
+            sub.update_body_inertial_parameters(name, psi)
+        # get inertias
+        for i, name in enumerate(frame_names):
+            pub_parameters = pub.get_body_inertial_parameters(name)
+            sub_parameters = sub.get_body_inertial_parameters(name)
+            self.assertTrue(
+                np.allclose(
+                    pub_parameters,
+                    new_parameters[i],
+                    atol=1e-9,
+                ),
+                "Wrong publisher's inertial parameters in frame "
+                + name
+                + "\n"
+                + "desired:\n"
+                + str(new_parameters[i])
+                + "obtained:\n"
+                + str(pub_parameters),
+            )
+            self.assertTrue(
+                np.allclose(
+                    sub_parameters,
+                    new_parameters[i],
+                    atol=1e-9,
+                ),
+                "Wrong subscriber's inertial parameters in frame "
+                + name
+                + "\n"
+                + "desired:\n"
+                + str(new_parameters[i])
+                + "obtained:\n"
+                + str(sub_parameters),
+            )
+
 class SampleHumanoidTest(TestWholeBodyTrajectoryAbstract):
     MODEL = pinocchio.buildSampleModelHumanoid()
     LOCKED_JOINTS = ["larm_elbow_joint", "rarm_elbow_joint"]
