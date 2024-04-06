@@ -35,6 +35,7 @@
 #include "crocoddyl_msgs/msg/multibody_inertia.hpp"
 #include "crocoddyl_msgs/msg/state.hpp"
 #include "crocoddyl_msgs/msg/time_interval.hpp"
+#include <rclcpp/rclcpp.hpp>
 #include <whole_body_state_msgs/msg/whole_body_state.hpp>
 #include <whole_body_state_msgs/msg/whole_body_trajectory.hpp>
 #else
@@ -233,11 +234,13 @@ const Vector10d getBodyInertialParameters(
     default: {
       std::invalid_argument("The type of frame " + frame_name +
                             " is not supported");
+      return NAN * Vector10d::Ones();
       break;
     }
     }
   } else {
     std::invalid_argument("Doesn't exist " + frame_name + " frame");
+    return NAN * Vector10d::Ones();
   }
 }
 
