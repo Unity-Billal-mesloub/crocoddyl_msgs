@@ -28,8 +28,8 @@ from crocoddyl_ros import (
     ContactType,
     WholeBodyTrajectoryRosPublisher,
     WholeBodyTrajectoryRosSubscriber,
-    toReduced,
     getRootNv,
+    toReduced,
 )
 
 
@@ -97,8 +97,12 @@ class TestWholeBodyTrajectoryAbstract(unittest.TestCase):
             )
 
     def test_publisher_without_contact(self):
-        sub = WholeBodyTrajectoryRosSubscriber(self.MODEL, "whole_body_trajectory_without_contact")
-        pub = WholeBodyTrajectoryRosPublisher(self.MODEL, "whole_body_trajectory_without_contact")
+        sub = WholeBodyTrajectoryRosSubscriber(
+            self.MODEL, "whole_body_trajectory_without_contact"
+        )
+        pub = WholeBodyTrajectoryRosPublisher(
+            self.MODEL, "whole_body_trajectory_without_contact"
+        )
         time.sleep(1)
         # publish whole-body trajectory messages
         N = len(self.ts)
@@ -188,7 +192,9 @@ class TestWholeBodyTrajectoryAbstract(unittest.TestCase):
     def test_communication_with_reduced_model(self):
         qref = pinocchio.randomConfiguration(self.MODEL)
         reduced_model = pinocchio.buildReducedModel(
-            self.MODEL, [self.MODEL.getJointId(name) for name in self.LOCKED_JOINTS], qref
+            self.MODEL,
+            [self.MODEL.getJointId(name) for name in self.LOCKED_JOINTS],
+            qref,
         )
         sub = WholeBodyTrajectoryRosSubscriber(
             self.MODEL, self.LOCKED_JOINTS, qref, "reduced_whole_body_trajectory"
@@ -331,14 +337,29 @@ class TestWholeBodyTrajectoryAbstract(unittest.TestCase):
                 )
 
     def test_update_model(self):
-        sub = WholeBodyTrajectoryRosSubscriber(self.MODEL, "whole_body_trajectory_update_model")
-        pub = WholeBodyTrajectoryRosPublisher(self.MODEL, "whole_body_trajectory_update_model")
+        sub = WholeBodyTrajectoryRosSubscriber(
+            self.MODEL, "whole_body_trajectory_update_model"
+        )
+        pub = WholeBodyTrajectoryRosPublisher(
+            self.MODEL, "whole_body_trajectory_update_model"
+        )
         time.sleep(1)
         # update inertia parameters
         if pinocchio.__version__ >= "2.7.1":
-            frame_names = [f.name for f in self.MODEL.frames if f.name != "universe" and (f.type == pinocchio.BODY or f.type == pinocchio.JOINT or f.type == pinocchio.FIXED_JOINT)]
+            frame_names = [
+                f.name
+                for f in self.MODEL.frames
+                if f.name != "universe"
+                and (
+                    f.type == pinocchio.BODY
+                    or f.type == pinocchio.JOINT
+                    or f.type == pinocchio.FIXED_JOINT
+                )
+            ]
         else:
-            frame_names = [f.name for f in self.MODEL.frames if f.type == pinocchio.JOINT]
+            frame_names = [
+                f.name for f in self.MODEL.frames if f.type == pinocchio.JOINT
+            ]
         new_parameters = []
         for name in frame_names:
             psi = pinocchio.Inertia.Random().toDynamicParameters()
@@ -381,16 +402,33 @@ class TestWholeBodyTrajectoryAbstract(unittest.TestCase):
     def test_update_reduced_model(self):
         qref = pinocchio.randomConfiguration(self.MODEL)
         reduced_model = pinocchio.buildReducedModel(
-            self.MODEL, [self.MODEL.getJointId(name) for name in self.LOCKED_JOINTS], qref
+            self.MODEL,
+            [self.MODEL.getJointId(name) for name in self.LOCKED_JOINTS],
+            qref,
         )
-        sub = WholeBodyTrajectoryRosSubscriber(reduced_model, "whole_body_trajectory_update_model")
-        pub = WholeBodyTrajectoryRosPublisher(reduced_model, "whole_body_trajectory_update_model")
+        sub = WholeBodyTrajectoryRosSubscriber(
+            reduced_model, "whole_body_trajectory_update_model"
+        )
+        pub = WholeBodyTrajectoryRosPublisher(
+            reduced_model, "whole_body_trajectory_update_model"
+        )
         time.sleep(1)
         # update inertia parameters
         if pinocchio.__version__ >= "2.7.1":
-            frame_names = [f.name for f in reduced_model.frames if f.name != "universe" and (f.type == pinocchio.BODY or f.type == pinocchio.JOINT or f.type == pinocchio.FIXED_JOINT)]
+            frame_names = [
+                f.name
+                for f in reduced_model.frames
+                if f.name != "universe"
+                and (
+                    f.type == pinocchio.BODY
+                    or f.type == pinocchio.JOINT
+                    or f.type == pinocchio.FIXED_JOINT
+                )
+            ]
         else:
-            frame_names = [f.name for f in reduced_model.frames if f.type == pinocchio.JOINT]
+            frame_names = [
+                f.name for f in reduced_model.frames if f.type == pinocchio.JOINT
+            ]
         new_parameters = []
         for name in frame_names:
             psi = pinocchio.Inertia.Random().toDynamicParameters()
@@ -430,13 +468,16 @@ class TestWholeBodyTrajectoryAbstract(unittest.TestCase):
                 + str(sub_parameters),
             )
 
+
 class SampleHumanoidTest(TestWholeBodyTrajectoryAbstract):
     MODEL = pinocchio.buildSampleModelHumanoid()
     LOCKED_JOINTS = ["larm_elbow_joint", "rarm_elbow_joint"]
 
+
 class SampleManipulatorTest(TestWholeBodyTrajectoryAbstract):
     MODEL = pinocchio.buildSampleModelManipulator()
     LOCKED_JOINTS = ["wrist1_joint", "wrist2_joint"]
+
 
 if __name__ == "__main__":
     test_classes_to_run = [

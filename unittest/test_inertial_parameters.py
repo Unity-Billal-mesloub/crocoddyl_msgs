@@ -23,14 +23,12 @@ else:
     import rospy
     import rosunit
 
-from crocoddyl_ros import (
-    MultibodyInertiaRosPublisher,
-    MultibodyInertiaRosSubscriber,
-)
+from crocoddyl_ros import MultibodyInertiaRosPublisher, MultibodyInertiaRosSubscriber
 
 
 class TestInertialParametersAbstract(unittest.TestCase):
     MODEL = None
+
     def setUp(self):
         if ROS_VERSION == 2:
             if not rclpy.ok():
@@ -70,11 +68,14 @@ class TestInertialParametersAbstract(unittest.TestCase):
                 + str(_parameters[names[i]]),
             )
 
+
 class SampleHumanoidTest(TestInertialParametersAbstract):
     MODEL = pinocchio.buildSampleModelHumanoid()
 
+
 class SampleManipulatorTest(TestInertialParametersAbstract):
     MODEL = pinocchio.buildSampleModelManipulator()
+
 
 if __name__ == "__main__":
     test_classes_to_run = [
